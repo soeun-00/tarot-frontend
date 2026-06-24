@@ -257,7 +257,6 @@
 
     <div class="btn-group" id="questionGroup" style="display: none;"></div>
 
-    <!-- 직접 입력 영역 -->
     <div id="customInputWrapper">
         <input type="text" id="userCustomQuestion" placeholder="여기에 구체적인 고민을 적어줘...">
         <button style="width:100%;" onclick="submitCustomQuestion()">이 고민으로 결정! 🚀</button>
@@ -453,11 +452,16 @@
         document.getElementById('result-box').style.display = 'block';
 
         try {
+            // Render 무료 서버 주소
             const BACKEND_URL = 'https://tarot-backend-ljr1.onrender.com';
 
+            // 타로 해석 요청 발송
             const response = await fetch(`${BACKEND_URL}/api/tarot`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
                 body: JSON.stringify({
                     category: session.category,
                     question: session.question,
@@ -466,9 +470,13 @@
                 })
             });
 
-            if (!response.ok) throw new Error('서버 응답 에러');
+            if (!response.ok) {
+                throw new Error(`HTTP 에러 발생! 상태코드: ${response.status}`);
+            }
+            
             const data = await response.json();
             
+            // 응답값 포맷팅 및 적용
             const formattedResult = data.result.replace(/\n/g, '<br>');
             document.getElementById('friendInterpretationText').innerHTML = `
                 <div class="final-conclusion">
@@ -478,8 +486,18 @@
             document.getElementById('friendSpeech').innerHTML = "결과 해석 끝났어! 카드별 의미랑 종합 결론까지 싹 풀었으니 읽어봐! 🔮";
 
         } catch (error) {
-            console.error(error);
-            document.getElementById('friendInterpretationText').innerHTML = "<p style='color:#ff7675;'>앗, AI 서버와 통신 중 문제가 생겼어. 다시 시도해줘!</p>";
+            console.error('Fetch 에러 로그:', error);
+            document.getElementById('friendInterpretationText').innerHTML = `
+                <div style="color:#ff7675; line-height: 1.6;">
+                    <p><b>앗, AI 서버와 연결에 실패했어! 🥲</b></p>
+                    <p style="font-size: 0.9em; color: #b2bec3;">
+                        이유 1: Render 무료 서버가 첫 접속 시 1~2분 정도 잠에서 깨어나는 로딩 시간이 필요해.<br>
+                        이유 2: 백엔드 서버(server.js)의 CORS 허용 설정이 프론트엔드 도메인을 막고 있을 수 있어.
+                    </p>
+                    <button onclick="showFinalResultAndFetchAI()" style="background-color: #6c5ce7; border: none; padding: 10px 15px; margin-top: 10px; width: auto; font-size: 0.9em;">
+                        🔄 다시 한 번 결과 요청하기
+                    </button>
+                </div>`;
         }
     }
 
