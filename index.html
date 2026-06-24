@@ -1,215 +1,319 @@
-<script>
-    // 프론트엔드에서는 이름과 번호 매핑만 최소한으로 관리합니다. 상세 텍스트는 AI가 동적 생성합니다.
-    const tarotNames = {
-        '0': 'The Fool', 'I': 'The Magician', 'II': 'The High Priestess', 'III': 'The Empress',
-        'IV': 'The Emperor', 'V': 'The Hierophant', 'VI': 'The Lovers', 'VII': 'The Chariot',
-        'VIII': 'Strength', 'IX': 'The Hermit', 'X': 'Wheel of Fortune', 'XI': 'Justice',
-        'XII': 'The Hanged Man', 'XIII': 'Death', 'XIV': 'Temperance', 'XV': 'The Devil',
-        'XVI': 'The Tower', 'XVII': 'The Star', 'XVIII': 'The Moon', 'XIX': 'The Sun',
-        'XX': 'Judgement', 'XXI': 'The World'
-    };
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>찐친 마스터 AI 타로</title>
+    <style>
+        :root {
+            --bg-color: #0f0c1b;
+            --card-bg: #1a162e;
+            --primary-color: #a29bfe;
+            --text-color: #f1f2f6;
+            --accent-color: #6c5ce7;
+        }
 
-    const questions = {
-        '연애': ["내가 좋아하는 사람이 나를 어떻게 생각할까?", "나를 좋아하는 사람이 있을까?", "언제쯤 연애를 하게 될까?"],
-        '성적': ["이번 시험 잘 볼 수 있을까?", "앞으로 이렇게 공식이나 계획대로 공부하면 될까?", "부족한 점을 채우기 위해 어떻게 공부해야할까?"],
-        '금전': ["올해 내 금전운은 어떨까?", "미래의 나는 돈을 잘 벌까?"],
-        '관계': ["그 친구와 잘 지낼 수 있을까?", "그 친구는 나를 어떻게 생각할까?", "그 친구와 더 친해질 수 있는 시기는 언제일까?"]
-    };
-
-    let session = { category: '', question: '', spread: '', selected: [], toPick: 0, availableKeys: [] };
-
-    function selectCategory(cat) {
-        session.category = cat;
-        document.getElementById('friendSpeech').innerHTML = `오라, <b>${cat}</b>운이 궁금하구나! <br>추천 질문을 고르거나 아래 입력창에 직접 너만의 고민을 써줘!`;
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-color); min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 20px; }
         
-        document.querySelectorAll('#categoryGroup button').forEach(b => {
-            if(b.innerText.includes(cat)) b.classList.add('selected-btn'); else b.style.display = 'none';
-        });
+        .container { max-width: 600px; width: 100%; background: var(--card-bg); border-radius: 20px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid #2d264d; margin-top: 20px; }
+        h1 { text-align: center; color: var(--primary-color); margin-bottom: 10px; font-size: 1.8em; text-shadow: 0 0 10px rgba(162,155,254,0.5); }
+        .subtitle { text-align: center; font-size: 0.9em; color: #a4b0be; margin-bottom: 25px; }
 
-        const qGroup = document.getElementById('questionGroup');
-        qGroup.innerHTML = '';
-        questions[cat].forEach(q => {
-            const b = document.createElement('button'); b.innerText = q;
-            b.onclick = () => { selectThisQuestion(q, b); };
-            qGroup.appendChild(b);
-        });
+        /* 말풍선 영역 */
+        .chat-box { background: #221c3d; border-radius: 15px; padding: 15px 20px; margin-bottom: 25px; border-left: 5px solid var(--primary-color); line-height: 1.6; }
+
+        /* 버튼 그룹 */
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+        .grid-three { grid-template-columns: 1fr 1fr 1fr !important; }
+        button { background: #2d264d; border: 2px solid #3d3566; color: var(--text-color); padding: 14px; border-radius: 12px; cursor: pointer; font-size: 0.95em; font-weight: bold; transition: all 0.2s; }
+        button:hover { background: var(--accent-color); border-color: var(--primary-color); transform: translateY(-2px); }
+        .selected-btn { background: var(--accent-color) !important; border-color: var(--primary-color) !important; box-shadow: 0 0 12px rgba(108,92,231,0.6); }
+
+        /* 직접 입력 구역 */
+        #customInputWrapper { display: none; margin-bottom: 20px; }
+        input[type="text"] { width: 100%; padding: 14px; border-radius: 12px; border: 2px solid #3d3566; background: #151126; color: #fff; font-size: 0.95em; margin-bottom: 10px; outline: none; }
+        input[type="text"]:focus { border-color: var(--primary-color); }
+
+        /* 타로 카드 셔플 및 부채꼴 */
+        #tarot-section { display: none; margin-top: 20px; text-align: center; }
+        .shuffle-pile { width: 110px; height: 180px; background: linear-gradient(135deg, #6c5ce7, #a29bfe); border-radius: 10px; margin: 30px auto; border: 3px solid #fff; box-shadow: 0 0 20px rgba(162,155,254,0.6); display: none; animation: shuffleAnim 0.5s infinite alternate; }
+        @keyframes shuffleAnim { from { transform: translateX(-15px) rotate(-5deg); } to { transform: translateX(15px) rotate(5deg); } }
+
+        .card-fan-container { position: relative; height: 260px; margin-top: 40px; display: none; }
+        .fan-card { position: absolute; width: 75px; height: 130px; background: linear-gradient(145deg, #2e264f, #18132b); border: 2px solid #5f4bb6; border-radius: 6px; left: calc(50% - 37.5px); bottom: 20px; transform-origin: center 180px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .fan-card:hover { border-color: var(--primary-color); bottom: 35px; box-shadow: 0 0 15px rgba(162,155,254,0.8); }
+
+        /* 결과 화면 디자인 */
+        #result-box { display: none; margin-top: 25px; background: #161229; border-radius: 15px; padding: 20px; border: 1px solid #32295c; }
+        .question-title { font-size: 1.1em; font-weight: bold; text-align: center; color: var(--primary-color); margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px dashed #32295c; }
         
-        const customBtn = document.createElement('button');
-        customBtn.innerText = "✍️ 내 고민 직접 입력하기...";
-        customBtn.style.borderColor = "#6c5ce7";
-        customBtn.onclick = () => {
-            qGroup.style.display = 'none';
-            document.getElementById('customInputWrapper').style.display = 'block';
-        };
-        qGroup.appendChild(customBtn);
-        qGroup.style.display = 'grid';
-    }
-
-    function selectThisQuestion(q, clickedBtn) {
-        session.question = q;
-        document.getElementById('friendSpeech').innerHTML = `<b>"${q}"</b> 이거구나. <br>그럼 카드를 한 장만 볼래, 아님 과거-현재-미래 흐름을 다 볼래?`;
+        .reading-grid { display: grid; gap: 15px; margin-bottom: 25px; }
+        .spread-card-cell { background: #211b3b; border-radius: 12px; padding: 15px; text-align: center; border: 1px solid #2d2552; }
+        .cell-tag { font-size: 0.8em; color: var(--primary-color); font-weight: bold; margin-bottom: 10px; }
         
-        document.querySelectorAll('#questionGroup button').forEach(qb => { 
-            if(qb !== clickedBtn) qb.style.display = 'none'; else qb.classList.add('selected-btn'); 
-        });
-        document.getElementById('customInputWrapper').style.display = 'none';
-        document.getElementById('spreadGroup').style.display = 'grid';
-    }
+        .revealed-card { width: 85px; height: 140px; background: linear-gradient(135deg, #1e1938, #2a224d); border: 2px solid #a29bfe; border-radius: 8px; margin: 0 auto; display: flex; justify-content: center; align-items: center; color: #fff; box-shadow: 0 0 15px rgba(162,155,254,0.2); }
+        
+        /* AI 해석 말과 줄바꿈 처리 */
+        .final-conclusion { line-height: 1.8; color: #eccc68; font-size: 1.05em; background: #1c1635; padding: 15px; border-radius: 10px; border-left: 4px solid #eccc68; text-align: left; }
+        .loading-dots span { animation: blink 1.4s infinite both; font-size: 1.5em; color: var(--primary-color); }
+        .loading-dots span:nth-child(2) { animation-delay: .2s; }
+        .loading-dots span:nth-child(3) { animation-delay: .4s; }
+        @keyframes blink { 0% { opacity: .2; } 20% { opacity: 1; } 100% { opacity: .2; } }
+    </style>
+</head>
+<body>
 
-    function submitCustomQuestion() {
-        const txt = document.getElementById('userCustomQuestion').value.trim();
-        if(!txt) { alert("고민 내용을 입력해줘!"); return; }
-        session.question = txt;
-        document.getElementById('customInputWrapper').style.display = 'none';
-        document.getElementById('friendSpeech').innerHTML = `<b>"${txt}"</b> 직접 적어준 고민이네! <br>카드를 한 장만 볼래, 아님 과거-현재-미래 쓰리카드로 볼래?`;
-        document.getElementById('spreadGroup').style.display = 'grid';
-    }
+    <div class="container">
+        <h1>🔮 찐친 마스터 AI 타로</h1>
+        <div class="subtitle">마음을 비우고 당신의 고민을 고르세요</div>
 
-    function startShuffle(spreadType) {
-        session.spread = spreadType;
-        session.toPick = spreadType === 'one' ? 1 : 3;
-        session.availableKeys = Object.keys(tarotNames); 
-        session.selected = [];
+        <div class="chat-box" id="friendSpeech">
+            어어, 왔어? 기다리고 있었지! <br>요즘 무슨 고민 있어? 마음 편하게 어떤 분야인지 골라봐. 같이 들어줄게.
+        </div>
 
-        document.querySelectorAll('#spreadGroup button').forEach(b => {
-            if(b.id.includes(spreadType)) b.classList.add('selected-btn'); else b.style.display = 'none';
-        });
+        <div class="btn-grid" id="categoryGroup">
+            <button onclick="selectCategory('연애')">❤️ 연애운</button>
+            <button onclick="selectCategory('성적')">📝 학업/성적</button>
+            <button onclick="selectCategory('금전')">💵 금전운</button>
+            <button onclick="selectCategory('관계')">🤝 인간관계</button>
+        </div>
 
-        document.getElementById('tarot-section').style.display = 'block';
-        const pile = document.getElementById('shufflePile');
-        pile.style.display = 'block';
-        document.getElementById('friendSpeech').innerHTML = "정성껏 섞어줄게. 머릿속으로 네 질문을 계속 간절하게 되새기고 있어봐!";
+        <div class="btn-grid" id="questionGroup" style="display:none;"></div>
 
-        setTimeout(() => {
-            pile.style.display = 'none';
-            generateCardFan();
-        }, 1500);
-    }
+        <div id="customInputWrapper">
+            <input type="text" id="userCustomQuestion" placeholder="여기에 구체적인 고민을 적어줘...">
+            <button style="width:100%;" onclick="submitCustomQuestion()">이 고민으로 결정! 🚀</button>
+        </div>
 
-    function generateCardFan() {
-        const container = document.getElementById('cardFanContainer');
-        container.innerHTML = '';
-        container.style.display = 'block';
-        document.getElementById('friendSpeech').innerHTML = `배열 완료! 💜 <br>마음에 드는 위치의 카드를 <b>${session.toPick}장</b>만 터치해서 골라줘.`;
+        <div class="btn-grid" id="spreadGroup" style="display:none;">
+            <button id="btn-one" onclick="startShuffle('one')">🎯 한 장만 보기 (원카드 조언)</button>
+            <button id="btn-three" onclick="startShuffle('three')">⏳ 과거-현재-미래 흐름 보기</button>
+        </div>
 
-        const totalCards = 22; 
-        const startAngle = -55; 
-        const endAngle = 55;   
-        const angleStep = (endAngle - startAngle) / (totalCards - 1);
+        <div id="tarot-section">
+            <div class="shuffle-pile" id="shufflePile"></div>
+            <div class="card-fan-container" id="cardFanContainer"></div>
+        </div>
 
-        for (let i = 0; i < totalCards; i++) {
-            const card = document.createElement('div');
-            card.className = 'fan-card';
-            const currentAngle = startAngle + (angleStep * i);
-            card.style.transform = `rotate(${currentAngle}deg)`;
-            card.style.zIndex = i + 1; 
+        <div id="result-box">
+            <div class="question-title" id="chosenQuestionTitle">💬 네 고민: ""</div>
+            <div class="reading-grid" id="readingGridLayout"></div>
+            <div id="friendInterpretationText" style="margin-top:20px;"></div>
             
-            card.onclick = () => {
-                card.style.visibility = 'hidden'; 
-                pickCardLogic();
-            };
-            container.appendChild(card);
-        }
-    }
+            <button style="width:100%; margin-top:25px; background:#2f3542;" onclick="resetAll()">다시 복채 내고 점보기 🔄</button>
+        </div>
+    </div>
 
-    function pickCardLogic() {
-        if (session.toPick <= 0) return;
-        session.toPick--;
+    <script>
+        // 프론트엔드 카드 데이터 설정
+        const tarotNames = {
+            '0': 'The Fool', 'I': 'The Magician', 'II': 'The High Priestess', 'III': 'The Empress',
+            'IV': 'The Emperor', 'V': 'The Hierophant', 'VI': 'The Lovers', 'VII': 'The Chariot',
+            'VIII': 'Strength', 'IX': 'The Hermit', 'X': 'Wheel of Fortune', 'XI': 'Justice',
+            'XII': 'The Hanged Man', 'XIII': 'Death', 'XIV': 'Temperance', 'XV': 'The Devil',
+            'XVI': 'The Tower', 'XVII': 'The Star', 'XVIII': 'The Moon', 'XIX': 'The Sun',
+            'XX': 'Judgement', 'XXI': 'The World'
+        };
 
-        const randomIndex = Math.floor(Math.random() * session.availableKeys.length);
-        const chosenKey = session.availableKeys.splice(randomIndex, 1)[0]; 
-        const isRegular = Math.random() < 0.5;
-        
-        session.selected.push({ key: chosenKey, name: tarotNames[chosenKey], isRegular: isRegular });
+        const questions = {
+            '연애': ["내가 좋아하는 사람이 나를 어떻게 생각할까?", "나를 좋아하는 사람이 있을까?", "언제쯤 연애를 하게 될까?"],
+            '성적': ["이번 시험 잘 볼 수 있을까?", "앞으로 이렇게 공식이나 계획대로 공부하면 될까?", "부족한 점을 채우기 위해 어떻게 공부해야할까?"],
+            '금전': ["올해 내 금전운은 어떨까?", "미래의 나는 돈을 잘 벌까?"],
+            '관계': ["그 친구와 잘 지낼 수 있을까?", "그 친구는 나를 어떻게 생각할까?", "그 친구와 더 친해질 수 있는 시기는 언제일까?"]
+        };
 
-        if (session.toPick > 0) {
-            document.getElementById('friendSpeech').innerHTML = `좋아, 하나 골랐고! 흐름 파악을 위해 <b>${session.toPick}장</b> 더 골라줘.`;
-        } else {
-            showFinalResultAndFetchAI();
-        }
-    }
+        let session = { category: '', question: '', spread: '', selected: [], toPick: 0, availableKeys: [] };
 
-    async function showFinalResultAndFetchAI() {
-        document.getElementById('tarot-section').style.display = 'none';
-        document.getElementById('chosenQuestionTitle').innerText = `💬 네 고민: "${session.question}"`;
-
-        const grid = document.getElementById('readingGridLayout');
-        grid.innerHTML = '';
-        if (session.spread === 'one') grid.classList.remove('grid-three'); else grid.classList.add('grid-three');
-
-        const tags = ['[과거의 흐름]', '[현재의 상황]', '[미래의 결과]'];
-        
-        // 백엔드로 보낼 카드 정보 포맷팅 (예: "The Fool (정방향)")
-        const cardsForAI = session.selected.map(card => `${card.name} (${card.isRegular ? '정방향' : '역방향'})`);
-
-        session.selected.forEach((card, idx) => {
-            const direction = card.isRegular ? '정방향' : '역방향';
-
-            const cell = document.createElement('div');
-            cell.className = 'spread-card-cell';
-            cell.innerHTML = `
-                <div class="cell-tag">${session.spread === 'one' ? '[오늘의 조언]' : tags[idx]}</div>
-                <div class="revealed-card" style="${card.isRegular ? '' : 'transform: scaleY(-1);'}">
-                    <div style="${card.isRegular ? '' : 'transform: scaleY(-1);'}">
-                        <b style="font-size:1.15em;">${card.key}</b><br>
-                        <span style="font-size:0.85em;">${card.name}</span><br>
-                        <span style="font-size:0.65em; color:#777;">(${direction})</span>
-                    </div>
-                </div>
-            `;
-            grid.appendChild(cell);
-        });
-
-        // AI 로딩UI 표시
-        document.getElementById('friendSpeech').innerHTML = "흠... 카드가 꽤 흥미롭게 나왔네. 잠시만 기다려봐, 찐친 마스터 AI가 정밀 분석 중이야!";
-        document.getElementById('friendInterpretationText').innerHTML = `
-            <div style="text-align:center; padding: 20px;" class="loading-dots">
-                <p style="margin-bottom:10px; color:#a29bfe;">AI가 카드의 기운을 해석하는 중</p>
-                <span>●</span> <span>●</span> <span>●</span>
-            </div>`;
-        document.getElementById('result-box').style.display = 'block';
-
-        try {
-            const BACKEND_URL = 'https://tarot-backend-ljr1.onrender.com';
-
-            // [수정 완료] const response 변수에 fetch 결과를 제대로 담아주고, 주소 뒤에 /api/tarot을 명시했습니다.
-            const response = await fetch(`${BACKEND_URL}/api/tarot`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    category: session.category,
-                    question: session.question,
-                    spread: session.spread,
-                    cards: cardsForAI // 백엔드 server.js의 req.body.cards와 매핑 일치시킴
-                })
+        function selectCategory(cat) {
+            session.category = cat;
+            document.getElementById('friendSpeech').innerHTML = `오라, <b>${cat}</b>운이 궁금하구나! <br>추천 질문을 고르거나 아래 입력창에 직접 너만의 고민을 써줘!`;
+            
+            document.querySelectorAll('#categoryGroup button').forEach(b => {
+                if(b.innerText.includes(cat)) b.classList.add('selected-btn'); else b.style.display = 'none';
             });
 
-            if (!response.ok) throw new Error('서버 응답 에러');
-            const data = await response.json();
+            const qGroup = document.getElementById('questionGroup');
+            qGroup.innerHTML = '';
+            questions[cat].forEach(q => {
+                const b = document.createElement('button'); b.innerText = q;
+                b.onclick = () => { selectThisQuestion(q, b); };
+                qGroup.appendChild(b);
+            });
             
-            // [수정 완료] 백엔드가 리턴하는 데이터 Key값(data.result)에 맞춰 연동하고 줄바꿈 처리 추가
-            const formattedResult = data.result.replace(/\n/g, '<br>');
-            document.getElementById('friendInterpretationText').innerHTML = `<div class="final-conclusion">${formattedResult}</div>`;
-            document.getElementById('friendSpeech').innerHTML = "타로 카드 리딩이 완료되었어! 아래에서 결과를 확인해봐. 🔮";
-
-        } catch (error) {
-            console.error(error);
-            document.getElementById('friendInterpretationText').innerHTML = "<p style='color:#ff7675;'>앗, AI 서버와 통신 중 문제가 생겼어. 다시 시도해줘!</p>";
+            const customBtn = document.createElement('button');
+            customBtn.innerText = "✍️ 내 고민 직접 입력하기...";
+            customBtn.style.borderColor = "#6c5ce7";
+            customBtn.onclick = () => {
+                qGroup.style.display = 'none';
+                document.getElementById('customInputWrapper').style.display = 'block';
+            };
+            qGroup.appendChild(customBtn);
+            qGroup.style.display = 'grid';
         }
-    }
 
-    function resetAll() {
-        session = { category: '', question: '', spread: '', selected: [], toPick: 0, availableKeys: [] };
-        document.getElementById('friendSpeech').innerHTML = "어어, 왔어? 기다리고 있었지! <br>요즘 무슨 고민 있어? 마음 편하게 어떤 분야인지 골라봐. 같이 들어줄게.";
-        document.getElementById('categoryGroup').style.display = 'grid';
-        document.querySelectorAll('#categoryGroup button').forEach(b => { b.classList.remove('selected-btn'); b.style.display = 'block'; });
-        document.getElementById('questionGroup').style.display = 'none';
-        document.getElementById('customInputWrapper').style.display = 'none';
-        document.getElementById('userCustomQuestion').value = '';
-        document.getElementById('spreadGroup').style.display = 'none';
-        document.querySelectorAll('#spreadGroup button').forEach(b => { b.classList.remove('selected-btn'); b.style.display = 'block'; });
-        document.getElementById('tarot-section').style.display = 'none';
-        document.getElementById('cardFanContainer').style.display = 'none';
-        document.getElementById('result-box').style.display = 'none';
-    }
-</script>
+        function selectThisQuestion(q, clickedBtn) {
+            session.question = q;
+            document.getElementById('friendSpeech').innerHTML = `<b>"${q}"</b> 이거구나. <br>그럼 카드를 한 장만 볼래, 아님 과거-현재-미래 흐름을 다 볼래?`;
+            
+            document.querySelectorAll('#questionGroup button').forEach(qb => { 
+                if(qb !== clickedBtn) qb.style.display = 'none'; else qb.classList.add('selected-btn'); 
+            });
+            document.getElementById('customInputWrapper').style.display = 'none';
+            document.getElementById('spreadGroup').style.display = 'grid';
+        }
+
+        function submitCustomQuestion() {
+            const txt = document.getElementById('userCustomQuestion').value.trim();
+            if(!txt) { alert("고민 내용을 입력해줘!"); return; }
+            session.question = txt;
+            document.getElementById('customInputWrapper').style.display = 'none';
+            document.getElementById('friendSpeech').innerHTML = `<b>"${txt}"</b> 직접 적어준 고민이네! <br>카드를 한 장만 볼래, 아님 과거-현재-미래 쓰리카드로 볼래?`;
+            document.getElementById('spreadGroup').style.display = 'grid';
+        }
+
+        function startShuffle(spreadType) {
+            session.spread = spreadType;
+            session.toPick = spreadType === 'one' ? 1 : 3;
+            session.availableKeys = Object.keys(tarotNames); 
+            session.selected = [];
+
+            document.querySelectorAll('#spreadGroup button').forEach(b => {
+                if(b.id.includes(spreadType)) b.classList.add('selected-btn'); else b.style.display = 'none';
+            });
+
+            document.getElementById('tarot-section').style.display = 'block';
+            const pile = document.getElementById('shufflePile');
+            pile.style.display = 'block';
+            document.getElementById('friendSpeech').innerHTML = "정성껏 섞어줄게. 머릿속으로 네 질문을 계속 간절하게 되새기고 있어봐!";
+
+            setTimeout(() => {
+                pile.style.display = 'none';
+                generateCardFan();
+            }, 1500);
+        }
+
+        function generateCardFan() {
+            const container = document.getElementById('cardFanContainer');
+            container.innerHTML = '';
+            container.style.display = 'block';
+            document.getElementById('friendSpeech').innerHTML = `배열 완료! 💜 <br>마음에 드는 위치의 카드를 <b>${session.toPick}장</b>만 터치해서 골라줘.`;
+
+            const totalCards = 22; 
+            const startAngle = -55; 
+            const endAngle = 55;   
+            const angleStep = (endAngle - startAngle) / (totalCards - 1);
+
+            for (let i = 0; i < totalCards; i++) {
+                const card = document.createElement('div');
+                card.className = 'fan-card';
+                const currentAngle = startAngle + (angleStep * i);
+                card.style.transform = `rotate(${currentAngle}deg)`;
+                card.style.zIndex = i + 1; 
+                
+                card.onclick = () => {
+                    card.style.visibility = 'hidden'; 
+                    pickCardLogic();
+                };
+                container.appendChild(card);
+            }
+        }
+
+        function pickCardLogic() {
+            if (session.toPick <= 0) return;
+            session.toPick--;
+
+            const randomIndex = Math.floor(Math.random() * session.availableKeys.length);
+            const chosenKey = session.availableKeys.splice(randomIndex, 1)[0]; 
+            const isRegular = Math.random() < 0.5;
+            
+            session.selected.push({ key: chosenKey, name: tarotNames[chosenKey], isRegular: isRegular });
+
+            if (session.toPick > 0) {
+                document.getElementById('friendSpeech').innerHTML = `좋아, 하나 골랐고! 흐름 파악을 위해 <b>${session.toPick}장</b> 더 골라줘.`;
+            } else {
+                showFinalResultAndFetchAI();
+            }
+        }
+
+        async function showFinalResultAndFetchAI() {
+            document.getElementById('tarot-section').style.display = 'none';
+            document.getElementById('chosenQuestionTitle').innerText = `💬 네 고민: "${session.question}"`;
+
+            const grid = document.getElementById('readingGridLayout');
+            grid.innerHTML = '';
+            if (session.spread === 'one') grid.classList.remove('grid-three'); else grid.classList.add('grid-three');
+
+            const tags = ['[과거의 흐름]', '[현재의 상황]', '[미래의 결과]'];
+            const cardsForAI = session.selected.map(card => `${card.name} (${card.isRegular ? '정방향' : '역방향'})`);
+
+            session.selected.forEach((card, idx) => {
+                const direction = card.isRegular ? '정방향' : '역방향';
+
+                const cell = document.createElement('div');
+                cell.className = 'spread-card-cell';
+                cell.innerHTML = `
+                    <div class="cell-tag">${session.spread === 'one' ? '[오늘의 조언]' : tags[idx]}</div>
+                    <div class="revealed-card" style="${card.isRegular ? '' : 'transform: scaleY(-1);'}">
+                        <div style="${card.isRegular ? '' : 'transform: scaleY(-1);'}">
+                            <b style="font-size:1.15em;">${card.key}</b><br>
+                            <span style="font-size:0.85em;">${card.name}</span><br>
+                            <span style="font-size:0.65em; color:#777;">(${direction})</span>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(cell);
+            });
+
+            document.getElementById('friendSpeech').innerHTML = "흠... 카드가 꽤 흥미롭게 나왔네. 잠시만 기다려봐, 찐친 마스터 AI가 정밀 분석 중이야!";
+            document.getElementById('friendInterpretationText').innerHTML = `
+                <div style="text-align:center; padding: 20px;" class="loading-dots">
+                    <p style="margin-bottom:10px; color:#a29bfe;">AI가 카드의 기운을 해석하는 중</p>
+                    <span>●</span> <span>●</span> <span>●</span>
+                </div>`;
+            document.getElementById('result-box').style.display = 'block';
+
+            try {
+                const BACKEND_URL = 'https://tarot-backend-ljr1.onrender.com';
+
+                const response = await fetch(`${BACKEND_URL}/api/tarot`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        category: session.category,
+                        question: session.question,
+                        spread: session.spread,
+                        cards: cardsForAI
+                    })
+                });
+
+                if (!response.ok) throw new Error('서버 응답 에러');
+                const data = await response.json();
+                
+                const formattedResult = data.result.replace(/\n/g, '<br>');
+                document.getElementById('friendInterpretationText').innerHTML = `<div class="final-conclusion">${formattedResult}</div>`;
+                document.getElementById('friendSpeech').innerHTML = "타로 카드 리딩이 완료되었어! 아래에서 결과를 확인해봐. 🔮";
+
+            } catch (error) {
+                console.error(error);
+                document.getElementById('friendInterpretationText').innerHTML = "<p style='color:#ff7675;'>앗, AI 서버와 통신 중 문제가 생겼어. 다시 시도해줘!</p>";
+            }
+        }
+
+        function resetAll() {
+            session = { category: '', question: '', spread: '', selected: [], toPick: 0, availableKeys: [] };
+            document.getElementById('friendSpeech').innerHTML = "어어, 왔어? 기다리고 있었지! <br>요즘 무슨 고민 있어? 마음 편하게 어떤 분야인지 골라봐. 같이 들어줄게.";
+            document.getElementById('categoryGroup').style.display = 'grid';
+            document.querySelectorAll('#categoryGroup button').forEach(b => { b.classList.remove('selected-btn'); b.style.display = 'block'; });
+            document.getElementById('questionGroup').style.display = 'none';
+            document.getElementById('customInputWrapper').style.display = 'none';
+            document.getElementById('userCustomQuestion').value = '';
+            document.getElementById('spreadGroup').style.display = 'none';
+            document.querySelectorAll('#spreadGroup button').forEach(b => { b.classList.remove('selected-btn'); b.style.display = 'block'; });
+            document.getElementById('tarot-section').style.display = 'none';
+            document.getElementById('cardFanContainer').style.display = 'none';
+            document.getElementById('result-box').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
